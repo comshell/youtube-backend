@@ -1,41 +1,35 @@
 const express = require('express');
-const cors = require('cors');
 const { google } = require('googleapis');
-require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const cors = require('cors');
 
 const app = express();
-app.use(express.json());
 app.use(cors());
+app.use(express.json());
 
-// Configure Google OAuth2 Client
+// Initialize Supabase Client using backend environment variables
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   process.env.GOOGLE_REDIRECT_URI
 );
 
-// 1. Health check endpoint for Render
-app.get('/', (req, res) => {
-  res.json({ status: "YouTube Verification Backend is live!" });
-});
-
-// 2. Generate Google OAuth Login URL
+// 1. Start OAuth Flow
 app.get('/auth/google', (req, res) => {
-  const scopes = [
-    'https://www.googleapis.com/auth/youtube.upload',
-    'https://www.googleapis.com/auth/youtube.readonly'
-  ];
-
   const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline', // Required to get a refresh token
-    scope: scopes,
-    prompt: 'consent' // Forces consent screen to ensure refresh token is provided
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/youtube.upload'],
+    prompt: 'consent' // Forces Google to issue a refresh_token
   });
-
-  res.json({ url });
+  res.redirect(url);
 });
 
-// 3. OAuth Callback: Exchange code for tokens (Stubbed for database storage later)
+// 2. OAuth Callback: Exchange code for tokens and save to Supabase
 app.get('/auth/google/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) {
@@ -44,12 +38,23 @@ app.get('/auth/google/callback', async (req, res) => {
 
   try {
     const { tokens } = await oauth2Client.getToken(code);
-    oauth2Client.setCredentials(tokens);
+    
+    // Google only sends refresh_token on the very first consent or when prompt='consent' is used
+    if (tokens.refresh_token) {
+      // For testing, we'll store it under a default client email or generic key until multi-client mapping is fully built out
+      const clientEmail = "comshell.master.zm@gmail.com"; 
 
-    // TODO: In the next steps, we will save `tokens.refresh_token` into Supabase tied to this user.
-    console.log("Tokens acquired successfully:", tokens);
+      const { error } = await supabase
+        .from('youtube_tokens')
+        .upsert({ email: clientEmail, refresh_token: tokens.refresh_token, updated_at: new Date() }, { onConflict: 'email' });
 
-    // Redirect user back to your frontend dashboard with success flag
+      if (error) {
+        console.error("Supabase save error:", error);
+      } else {
+        console.log("Refresh token successfully saved to Supabase!");
+      }
+    }
+
     res.redirect('https://comshell.github.io/dashboard.html?linked=success');
   } catch (error) {
     console.error("Error exchanging code for tokens:", error);
@@ -57,76 +62,65 @@ app.get('/auth/google/callback', async (req, res) => {
   }
 });
 
-// 4. Request Direct-to-YouTube Resumable Upload Session URL
-app.post('/api/create-upload-session', async (req, res) => {
-  const { refreshToken, title, description, fileSize } = req.body;
-
-  if (!refreshToken) {
-    return res.status(401).json({ 
-      error: "Mom's connection expired, she needs to tap 'Relink YouTube' on her dashboard." 
-    });
-  }
-
+// 3. Initiate Resumable Upload (Pulls real token from Supabase)
+app.post('/api/initiate-upload', async (req, res) => {
   try {
-    // Set credentials using the user's saved refresh token
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const clientEmail = "comshell.master.zm@gmail.com";
 
-    // Initialize YouTube service
+    // Fetch the real refresh token from Supabase
+    const { data, error } = await supabase
+      .from('youtube_tokens')
+      .select('refresh_token')
+      .eq('email', clientEmail)
+      .single();
+
+    if (error || !data || !data.refresh_token) {
+      return res.status(401).json({ error: "Mom's connection expired, she needs to tap 'Relink YouTube' on her dashboard." });
+    }
+
+    // Set credentials with the retrieved refresh token
+    oauth2Client.setCredentials({ refresh_token: data.refresh_token });
+
     const youtube = google.youtube({
       version: 'v3',
       auth: oauth2Client
     });
 
-    // Request a resumable upload session from Google
-    // Note: We set privacyStatus to 'private' as per your verification pipeline requirement!
+    const { title, description } = req.body;
+
+    // Request a Resumable Upload Session URL from YouTube
     const response = await youtube.videos.insert({
       part: 'snippet,status',
       requestBody: {
         snippet: {
-          title: title || 'Pending Verification Video',
-          description: description || 'Uploaded via Creator Launch Pad verification pipeline.',
-          categoryId: '22' // People & Blogs default
+          title: title || 'Default Upload Title',
+          description: description || 'Uploaded via Secure Client Pipeline',
+          categoryId: '22'
         },
         status: {
-          privacyStatus: 'private', // Sits as private until second person verifies
-          selfDeclaredMadeForKids: false
+          privacyStatus: 'private' // Safe default for testing
         }
       },
       media: {
-        body: null // We just want the session URI header back, browser will stream the body
+        body: '' // Initiating session only
       }
     }, {
-      // This tells Google we want a resumable upload URI returned in headers
+      // Tell googleapis to return the resumable upload session header
       headers: {
-        'X-Upload-Content-Length': fileSize,
-        'X-Upload-Content-Type': 'video/*'
+        'X-Upload-Content-Length': req.headers['x-upload-content-length'] || 0,
+        'X-Upload-Content-Type': req.headers['x-upload-content-type'] || 'video/*'
       }
     });
 
-    // Google returns the resumable session URL in the Location header
+    // Send the direct upload URL back to the frontend browser
     const uploadUrl = response.headers.location;
-
-    if (!uploadUrl) {
-      throw new Error("Failed to retrieve upload session URL from Google.");
-    }
-
     res.json({ uploadUrl });
 
-  } catch (error) {
-    console.error("Resumable upload session error:", error);
-    
-    // Graceful error handler checking for expired or revoked tokens
-    if (error.code === 401 || error.code === 403 || (error.message && error.message.includes('invalid_grant'))) {
-      return res.status(401).json({ 
-        error: "Mom's connection expired, she needs to tap 'Relink YouTube' on her dashboard." 
-      });
-    }
-
-    res.status(500).json({ error: "Failed to initialize upload session. Please try again." });
+  } catch (err) {
+    console.error("Error initiating upload session:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Backend server running on port ${PORT}`));
