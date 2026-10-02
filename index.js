@@ -79,7 +79,8 @@ app.post('/api/initiate-upload', async (req, res) => {
     });
 
     const { title, description, fileSize } = req.body;
-    const fileType = req.headers['content-type'] || 'video/*';
+    const { title, description, fileSize, fileType } = req.body;
+    const actualFileType = fileType || 'video/*';
 
     const response = await youtube.videos.insert({
       part: 'snippet,status',
