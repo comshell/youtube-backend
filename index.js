@@ -80,6 +80,7 @@ app.post('/api/initiate-upload', async (req, res) => {
 
     const { title, description, fileSize, fileType } = req.body;
     const actualFileType = fileType || 'video/*';
+    const frontendOrigin = req.headers['origin-header'] || 'https://www.comshell.co.uk';
 
    const response = await youtube.videos.insert({
       part: 'snippet,status',
