@@ -99,7 +99,7 @@ app.post('/api/initiate-upload', async (req, res) => {
     }, {
       headers: {
         'X-Upload-Content-Length': fileSize || 0,
-        'X-Upload-Content-Type': fileType
+        'X-Upload-Content-Type': actualfileType
       }
     });
 
