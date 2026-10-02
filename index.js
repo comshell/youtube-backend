@@ -83,6 +83,7 @@ app.post('/api/initiate-upload', async (req, res) => {
 
     const response = await youtube.videos.insert({
       part: 'snippet,status',
+      uploadType: 'resumable',
       requestBody: {
         snippet: {
           title: title || 'Verification Upload',
