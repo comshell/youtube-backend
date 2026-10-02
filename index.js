@@ -50,10 +50,10 @@ app.get('/auth/google/callback', async (req, res) => {
     console.log("Tokens acquired successfully:", tokens);
 
     // Redirect user back to your frontend dashboard with success flag
-    res.redirect('https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPO_NAME/dashboard.html?linked=success');
+    res.redirect('https://comshell.github.io/dashboard.html?linked=success');
   } catch (error) {
     console.error("Error exchanging code for tokens:", error);
-    res.redirect('https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPO_NAME/dashboard.html?error=token_failed');
+    res.redirect('https://comshell.github.io/dashboard.html?error=token_failed');
   }
 });
 
