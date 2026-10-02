@@ -81,10 +81,9 @@ app.post('/api/initiate-upload', async (req, res) => {
     const { title, description, fileSize, fileType } = req.body;
     const actualFileType = fileType || 'video/*';
 
-    const response = await youtube.videos.insert({
+   const response = await youtube.videos.insert({
       part: 'snippet,status',
-      uploadType: 'resumable',
-      requestBody: {
+      resource: {  // Note: some versions of googleapis use 'resource' instead of 'requestBody' for insert
         snippet: {
           title: title || 'Verification Upload',
           description: description || 'Pending verification video submission.',
@@ -95,9 +94,12 @@ app.post('/api/initiate-upload', async (req, res) => {
         }
       },
       media: {
-        body: ''
+        mimeType: actualFileType,
+        body: '' // Empty body to initialize session
       }
     }, {
+      // Force the exact endpoint override for resumable upload initiation
+      url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
       headers: {
         'X-Upload-Content-Length': fileSize || 0,
         'X-Upload-Content-Type': actualFileType
