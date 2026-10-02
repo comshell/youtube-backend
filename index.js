@@ -102,7 +102,8 @@ app.post('/api/initiate-upload', async (req, res) => {
       url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
       headers: {
         'X-Upload-Content-Length': fileSize || 0,
-        'X-Upload-Content-Type': actualFileType
+        'X-Upload-Content-Type': actualFileType,
+        'Origin': frontendOrigin
       }
     });
 
