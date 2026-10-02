@@ -82,9 +82,9 @@ app.post('/api/initiate-upload', async (req, res) => {
     const actualFileType = fileType || 'video/*';
     const frontendOrigin = req.headers['origin-header'] || 'https://www.comshell.co.uk';
 
-   const response = await youtube.videos.insert({
+  const response = await youtube.videos.insert({
       part: 'snippet,status',
-      resource: {  // Note: some versions of googleapis use 'resource' instead of 'requestBody' for insert
+      requestBody: {  // <--- Change 'resource' to 'requestBody' here!
         snippet: {
           title: title || 'Verification Upload',
           description: description || 'Pending verification video submission.',
