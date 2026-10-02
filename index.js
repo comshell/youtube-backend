@@ -75,7 +75,7 @@ app.post('/api/initiate-upload', async (req, res) => {
       .single();
 
     if (error || !data || !data.refresh_token) {
-      return res.status(401).json({ error: "Mom's connection expired, she needs to tap 'Relink YouTube' on her dashboard." });
+      return res.status(401).json({ error: "Connection expired, please tap 'Link YouTube Account' on your dashboard." });
     }
 
     // Set credentials with the retrieved refresh token
@@ -86,29 +86,29 @@ app.post('/api/initiate-upload', async (req, res) => {
       auth: oauth2Client
     });
 
-    const { title, description } = req.body;
+    const { title, description, fileSize } = req.body;
+    const fileType = req.headers['content-type'] || 'video/*';
 
-    // Request a Resumable Upload Session URL from YouTube
+    // Request a Resumable Upload Session URL from YouTube with correct metadata & headers
     const response = await youtube.videos.insert({
       part: 'snippet,status',
       requestBody: {
         snippet: {
-          title: title || 'Default Upload Title',
-          description: description || 'Uploaded via Secure Client Pipeline',
+          title: title || 'Verification Upload',
+          description: description || 'Pending verification video submission.',
           categoryId: '22'
         },
         status: {
-          privacyStatus: 'private' // Safe default for testing
+          privacyStatus: 'private'
         }
       },
       media: {
-        body: '' // Initiating session only
+        body: '' // Initiating session only, no body stream yet
       }
     }, {
-      // Tell googleapis to return the resumable upload session header
       headers: {
-        'X-Upload-Content-Length': req.headers['x-upload-content-length'] || 0,
-        'X-Upload-Content-Type': req.headers['x-upload-content-type'] || 'video/*'
+        'X-Upload-Content-Length': fileSize || 0,
+        'X-Upload-Content-Type': fileType
       }
     });
 
@@ -121,6 +121,3 @@ app.post('/api/initiate-upload', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Backend server running on port ${PORT}`));
