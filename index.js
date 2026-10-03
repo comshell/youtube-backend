@@ -48,7 +48,7 @@ app.get('/auth/google/callback', async (req, res) => {
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
-    // 1. Extract and verify the email securely from Google's ID token
+// 1. Extract and verify the email securely from Google's ID token
     let userEmail = null;
     if (tokens.id_token) {
       const ticket = await client.verifyIdToken({
@@ -56,7 +56,8 @@ app.get('/auth/google/callback', async (req, res) => {
         audience: process.env.GOOGLE_CLIENT_ID,
       });
       const payload = ticket.getPayload();
-      userEmail = payload.email;
+      // Normalize to lowercase to avoid case-sensitivity issues
+      userEmail = payload.email ? payload.email.toLowerCase() : null;
     }
 
     if (!userEmail) {
