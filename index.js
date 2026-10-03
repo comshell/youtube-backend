@@ -96,7 +96,7 @@ app.get('/auth/google/callback', async (req, res) => {
       }
     }
 
-    res.redirect('https://comshell.github.io/dashboard.html?linked=success');
+    res.redirect(`https://comshell.github.io/dashboard.html?linked=success&email=${encodeURIComponent(userEmail)}`);
   } catch (error) {
     console.error("Error exchanging code for tokens:", error);
     res.redirect('https://comshell.github.io/dashboard.html?error=token_failed');
