@@ -17,6 +17,7 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_SECRET,
   process.env.GOOGLE_REDIRECT_URI
 );
+
 app.get('/auth/google', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -25,6 +26,7 @@ app.get('/auth/google', (req, res) => {
   });
   res.redirect(url);
 });
+
 app.get('/auth/google/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) {
@@ -32,11 +34,18 @@ app.get('/auth/google/callback', async (req, res) => {
   }
 
   try {
-    const { tokens } = await oauth2Client.getToken(code);
-    oauth2Client.setCredentials(tokens);
+    // Create a fresh, isolated client instance specifically for this token exchange
+    const client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+
+    const { tokens } = await client.getToken(code);
+    client.setCredentials(tokens);
 
     // 1. Fetch the Google profile info to get the authenticated user's email address
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const oauth2 = google.oauth2({ version: 'v2', auth: client });
     const userInfo = await oauth2.userinfo.get();
     const userEmail = userInfo.data.email;
 
@@ -102,9 +111,9 @@ app.post('/api/initiate-upload', async (req, res) => {
     const actualFileType = fileType || 'video/*';
     const frontendOrigin = req.headers['origin-header'] || 'https://www.comshell.co.uk';
 
-  const response = await youtube.videos.insert({
+    const response = await youtube.videos.insert({
       part: 'snippet,status',
-      requestBody: {  // <--- Change 'resource' to 'requestBody' here!
+      requestBody: {
         snippet: {
           title: title || 'Verification Upload',
           description: description || 'Pending verification video submission.',
@@ -119,7 +128,6 @@ app.post('/api/initiate-upload', async (req, res) => {
         body: '' // Empty body to initialize session
       }
     }, {
-      // Force the exact endpoint override for resumable upload initiation
       url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
       headers: {
         'X-Upload-Content-Length': fileSize || 0,
@@ -137,7 +145,7 @@ app.post('/api/initiate-upload', async (req, res) => {
   }
 });
 
-// --- NEW HEALTH-CHECK ENDPOINT FOR SUPABASE WAKE-UP ---
+// --- HEALTH-CHECK ENDPOINT ---
 app.get('/api/health', async (req, res) => {
   try {
     const { error } = await supabase.from('youtube_tokens').select('email').limit(1);
@@ -149,7 +157,7 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({ status: 'Error', error: err.message });
   }
 });
-// ----------------------------------------------------
+// -----------------------------
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend server running on port ${PORT}`));
