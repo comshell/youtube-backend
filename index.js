@@ -56,9 +56,10 @@ app.get('/auth/google/callback', async (req, res) => {
         audience: process.env.GOOGLE_CLIENT_ID,
       });
       const payload = ticket.getPayload();
-      // Normalize to lowercase to avoid case-sensitivity issues
       userEmail = payload.email ? payload.email.toLowerCase() : null;
     }
+
+    console.log("DEBUG: Extracted userEmail from Google:", userEmail);
 
     if (!userEmail) {
       return res.redirect('https://comshell.github.io/dashboard.html?error=no_email');
@@ -71,12 +72,13 @@ app.get('/auth/google/callback', async (req, res) => {
       .eq('email', userEmail)
       .single();
 
+    console.log("DEBUG: Supabase query result - Data:", allowedData, "Error:", allowedError);
+
     // 3. If the email is not found in the table, block them immediately!
     if (allowedError || !allowedData) {
       console.log(`Unauthorized login attempt blocked for: ${userEmail}`);
       return res.redirect('https://comshell.github.io/dashboard.html?error=unauthorized');
     }
-
     // 4. Authorized! Save the refresh token to Supabase
     if (tokens.refresh_token) {
       const { error } = await supabase
