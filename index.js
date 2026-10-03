@@ -21,7 +21,12 @@ const oauth2Client = new google.auth.OAuth2(
 app.get('/auth/google', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/youtube.upload'],
+    // Added 'openid' and 'email' so Google returns a valid id_token for verification
+    scope: [
+      'https://www.googleapis.com/auth/youtube.upload',
+      'openid',
+      'email'
+    ],
     prompt: 'consent'
   });
   res.redirect(url);
@@ -43,7 +48,7 @@ app.get('/auth/google/callback', async (req, res) => {
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
-    // 1. Extract and verify the email directly from Google's secure ID token
+    // 1. Extract and verify the email securely from Google's ID token
     let userEmail = null;
     if (tokens.id_token) {
       const ticket = await client.verifyIdToken({
@@ -71,11 +76,14 @@ app.get('/auth/google/callback', async (req, res) => {
       return res.redirect('https://comshell.github.io/dashboard.html?error=unauthorized');
     }
 
-    // 4. Authorized! Proceed to save the refresh token as normal
+    // 4. Authorized! Save the refresh token to Supabase
     if (tokens.refresh_token) {
       const { error } = await supabase
         .from('youtube_tokens')
-        .upsert({ email: userEmail, refresh_token: tokens.refresh_token, updated_at: new Date() }, { onConflict: 'email' });
+        .upsert(
+          { email: userEmail, refresh_token: tokens.refresh_token, updated_at: new Date() },
+          { onConflict: 'email' }
+        );
 
       if (error) {
         console.error("Supabase save error:", error);
