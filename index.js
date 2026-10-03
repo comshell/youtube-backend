@@ -18,15 +18,6 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI
 );
 
-app.get('/auth/google', (req, res) => {
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/youtube.upload'],
-    prompt: 'consent'
-  });
-  res.redirect(url);
-});
-
 app.get('/auth/google/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) {
@@ -35,18 +26,40 @@ app.get('/auth/google/callback', async (req, res) => {
 
   try {
     const { tokens } = await oauth2Client.getToken(code);
-    
-    if (tokens.refresh_token) {
-      const clientEmail = "comshell.master.zm@gmail.com"; 
+    oauth2Client.setCredentials(tokens);
 
+    // 1. Fetch the Google profile info to get the authenticated user's email address
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const userInfo = await oauth2.userinfo.get();
+    const userEmail = userInfo.data.email;
+
+    if (!userEmail) {
+      return res.redirect('https://comshell.github.io/dashboard.html?error=no_email');
+    }
+
+    // 2. Query Supabase to check if this email exists in your allowed_emails table
+    const { data: allowedData, error: allowedError } = await supabase
+      .from('allowed_emails')
+      .select('email')
+      .eq('email', userEmail)
+      .single();
+
+    // 3. If the email is not found in the table, block them immediately!
+    if (allowedError || !allowedData) {
+      console.log(`Unauthorized login attempt blocked for: ${userEmail}`);
+      return res.redirect('https://comshell.github.io/dashboard.html?error=unauthorized');
+    }
+
+    // 4. Authorized! Proceed to save the refresh token as normal
+    if (tokens.refresh_token) {
       const { error } = await supabase
         .from('youtube_tokens')
-        .upsert({ email: clientEmail, refresh_token: tokens.refresh_token, updated_at: new Date() }, { onConflict: 'email' });
+        .upsert({ email: userEmail, refresh_token: tokens.refresh_token, updated_at: new Date() }, { onConflict: 'email' });
 
       if (error) {
         console.error("Supabase save error:", error);
       } else {
-        console.log("Refresh token successfully saved to Supabase!");
+        console.log(`Refresh token successfully saved to Supabase for ${userEmail}!`);
       }
     }
 
