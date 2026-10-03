@@ -117,5 +117,19 @@ app.post('/api/initiate-upload', async (req, res) => {
   }
 });
 
+// --- NEW HEALTH-CHECK ENDPOINT FOR SUPABASE WAKE-UP ---
+app.get('/api/health', async (req, res) => {
+  try {
+    const { error } = await supabase.from('youtube_tokens').select('email').limit(1);
+    if (error) {
+      return res.status(500).json({ status: 'Database error', error: error.message });
+    }
+    res.status(200).json({ status: 'Alive and kicking!' });
+  } catch (err) {
+    res.status(500).json({ status: 'Error', error: err.message });
+  }
+});
+// ----------------------------------------------------
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend server running on port ${PORT}`));
