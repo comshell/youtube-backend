@@ -34,7 +34,6 @@ app.get('/auth/google/callback', async (req, res) => {
   }
 
   try {
-    // Create a fresh, isolated client instance specifically for this token exchange
     const client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -44,10 +43,16 @@ app.get('/auth/google/callback', async (req, res) => {
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
-    // 1. Fetch the Google profile info to get the authenticated user's email address
-    const oauth2 = google.oauth2({ version: 'v2', auth: client });
-    const userInfo = await oauth2.userinfo.get();
-    const userEmail = userInfo.data.email;
+    // 1. Extract and verify the email directly from Google's secure ID token
+    let userEmail = null;
+    if (tokens.id_token) {
+      const ticket = await client.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      userEmail = payload.email;
+    }
 
     if (!userEmail) {
       return res.redirect('https://comshell.github.io/dashboard.html?error=no_email');
