@@ -48,7 +48,7 @@ app.get('/auth/google/callback', async (req, res) => {
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
-// 1. Extract and verify the email securely from Google's ID token
+    // 1. Extract and verify the email securely from Google's ID token
     let userEmail = null;
     if (tokens.id_token) {
       const ticket = await client.verifyIdToken({
@@ -79,6 +79,7 @@ app.get('/auth/google/callback', async (req, res) => {
       console.log(`Unauthorized login attempt blocked for: ${userEmail}`);
       return res.redirect('https://comshell.github.io/dashboard.html?error=unauthorized');
     }
+
     // 4. Authorized! Save the refresh token to Supabase
     if (tokens.refresh_token) {
       const { error } = await supabase
@@ -104,12 +105,16 @@ app.get('/auth/google/callback', async (req, res) => {
 
 app.post('/api/initiate-upload', async (req, res) => {
   try {
-    const clientEmail = "comshell.master.zm@gmail.com";
+    const { title, description, fileSize, fileType, userEmail } = req.body;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: "User email missing from upload request." });
+    }
 
     const { data, error } = await supabase
       .from('youtube_tokens')
       .select('refresh_token')
-      .eq('email', clientEmail)
+      .eq('email', userEmail.toLowerCase())
       .single();
 
     if (error || !data || !data.refresh_token) {
@@ -123,7 +128,6 @@ app.post('/api/initiate-upload', async (req, res) => {
       auth: oauth2Client
     });
 
-    const { title, description, fileSize, fileType } = req.body;
     const actualFileType = fileType || 'video/*';
     const frontendOrigin = req.headers['origin-header'] || 'https://www.comshell.co.uk';
 
