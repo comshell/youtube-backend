@@ -2,6 +2,7 @@ const express = require('express');
 const { google } = require('googleapis');
 const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -17,6 +18,29 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_SECRET,
   process.env.GOOGLE_REDIRECT_URI
 );
+
+// --- TOKEN ENCRYPTION HELPERS ---
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
+const IV_LENGTH = 16;
+
+function encryptToken(text) {
+  let iv = crypto.randomBytes(IV_LENGTH);
+  let cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decryptToken(text) {
+  let textParts = text.split(':');
+  let iv = Buffer.from(textParts.shift(), 'hex');
+  let encryptedText = Buffer.from(textParts.join(':'), 'hex');
+  let decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
+// ---------------------------------
 
 app.get('/auth/google', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
@@ -80,19 +104,21 @@ app.get('/auth/google/callback', async (req, res) => {
       return res.redirect('https://comshell.github.io/dashboard.html?error=unauthorized');
     }
 
-    // 4. Authorized! Save the refresh token to Supabase
+    // 4. Authorized! Encrypt and save the refresh token to Supabase
     if (tokens.refresh_token) {
+      const encryptedToken = encryptToken(tokens.refresh_token);
+      
       const { error } = await supabase
         .from('youtube_tokens')
         .upsert(
-          { email: userEmail, refresh_token: tokens.refresh_token, updated_at: new Date() },
+          { email: userEmail, refresh_token: encryptedToken, updated_at: new Date() },
           { onConflict: 'email' }
         );
 
       if (error) {
         console.error("Supabase save error:", error);
       } else {
-        console.log(`Refresh token successfully saved to Supabase for ${userEmail}!`);
+        console.log(`Encrypted refresh token successfully saved to Supabase for ${userEmail}!`);
       }
     }
 
@@ -121,7 +147,9 @@ app.post('/api/initiate-upload', async (req, res) => {
       return res.status(401).json({ error: "Connection expired, please tap 'Link YouTube Account' on your dashboard." });
     }
 
-    oauth2Client.setCredentials({ refresh_token: data.refresh_token });
+    // Decrypt the token right before handing it to Google's client
+    const plainRefreshToken = decryptToken(data.refresh_token);
+    oauth2Client.setCredentials({ refresh_token: plainRefreshToken });
 
     const youtube = google.youtube({
       version: 'v3',
