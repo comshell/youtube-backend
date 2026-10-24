@@ -185,37 +185,6 @@ app.post('/api/initiate-upload', async (req, res) => {
     });
 
     const uploadUrl = response.headers.location;
-
-    // --- DISPATCH ALERT EMAIL VIA RESEND ---
-    if (userEmail && process.env.RESEND_API_KEY) {
-      try {
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
-          },
-          body: JSON.stringify({
-            from: 'ComShell SUP <onboarding@resend.dev>',
-            to: [userEmail],
-            subject: '🔔New Video Uploaded🔔',
-            html: `
-              <div style="font-family: sans-serif; color: #0f172a; line-height: 1.6;">
-                <h2 style="color: #2aa6ad;">ComShell's Safe Upload Pipeline</h2>
-                <p>Hello,</p>
-                <p>A new video titled <strong>"${title || 'Untitled Video'}"</strong> has just been successfully uploaded and will remain <strong>Private</strong> until you view it.</p>
-                <p style="color: #475569; font-size: 0.9rem; margin-top: 2rem;">ComShell</p>
-              </div>
-            `
-          })
-        });
-        console.log(`Alert notification email successfully dispatched to ${userEmail}`);
-      } catch (emailErr) {
-        console.error("Failed to dispatch email notification:", emailErr);
-      }
-    }
-    // ----------------------------------------
-
     res.json({ uploadUrl });
 
   } catch (err) {
