@@ -185,6 +185,25 @@ app.post('/api/initiate-upload', async (req, res) => {
     });
 
     const uploadUrl = response.headers.location;
+
+    // --- SERVER-SIDE FORMSPREE NOTIFICATION PING ---
+    try {
+      await fetch('https://formspree.io/f/mdeonlbw', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: '💡!SUP Upload Initialized!💡',
+          'Customer Email': userEmail,
+          'Video Title': title || 'Verification Upload',
+          'File Size': (fileSize / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+        })
+      });
+      console.log(`Formspree alert notification sent for ${userEmail}`);
+    } catch (formspreeErr) {
+      console.log('Formspree notification failed silently:', formspreeErr);
+    }
+    // ----------------------------------------------
+
     res.json({ uploadUrl });
 
   } catch (err) {
