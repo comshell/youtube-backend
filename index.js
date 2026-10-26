@@ -194,7 +194,7 @@ app.post('/api/upload-complete', async (req, res) => {
     }
 
     const data = await resend.emails.send({
-      from: 'ComShell SUP <onboarding@resend.dev>',
+      from: 'ComShell SUP <notifications@comshell.co.uk>',
       to: [userEmail],
       subject: '✅New Video Awaiting Review!✅',
       html: `
@@ -202,7 +202,7 @@ app.post('/api/upload-complete', async (req, res) => {
           <h2 style="color: #2aa6ad;">Upload Successful!</h2>
           <p>Hello,</p>
           <p>The video <strong>"${title || 'Untitled Video'}"</strong> has just been successfully uploaded to YouTube through via ComShell's Safe Upload Pipeline. This video will remain PRIVATE and will not be accessible by the public until you change its visibility to PUBLIC or UNLISTED in the YouTube app.</p>
-          <p style="margin-top: 20px; color: #475569; font-size: 0.9rem;">Thank you for using ComShell!</p>
+          <p style="margin-top: 20px; color: #475569; font-size: 0.9rem;">Thanks for using ComShell!</p>
         </div>
       `
     });
