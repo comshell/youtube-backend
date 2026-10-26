@@ -3,10 +3,13 @@ const { google } = require('googleapis');
 const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
 const crypto = require('crypto');
+const { Resend } = require('resend');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -45,7 +48,6 @@ function decryptToken(text) {
 app.get('/auth/google', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    // Added 'openid' and 'email' so Google returns a valid id_token for verification
     scope: [
       'https://www.googleapis.com/auth/youtube.upload',
       'openid',
@@ -72,7 +74,6 @@ app.get('/auth/google/callback', async (req, res) => {
     const { tokens } = await client.getToken(code);
     client.setCredentials(tokens);
 
-    // 1. Extract and verify the email securely from Google's ID token
     let userEmail = null;
     if (tokens.id_token) {
       const ticket = await client.verifyIdToken({
@@ -83,28 +84,21 @@ app.get('/auth/google/callback', async (req, res) => {
       userEmail = payload.email ? payload.email.toLowerCase() : null;
     }
 
-    console.log("DEBUG: Extracted userEmail from Google:", userEmail);
-
     if (!userEmail) {
       return res.redirect('https://comshell.github.io/dashboard.html?error=no_email');
     }
 
-    // 2. Query Supabase to check if this email exists in your allowed_emails table
     const { data: allowedData, error: allowedError } = await supabase
       .from('allowed_emails')
       .select('email')
       .eq('email', userEmail)
       .single();
 
-    console.log("DEBUG: Supabase query result - Data:", allowedData, "Error:", allowedError);
-
-    // 3. If the email is not found in the table, block them immediately!
     if (allowedError || !allowedData) {
       console.log(`Unauthorized login attempt blocked for: ${userEmail}`);
       return res.redirect('https://comshell.github.io/dashboard.html?error=unauthorized');
     }
 
-    // 4. Authorized! Encrypt and save the refresh token to Supabase
     if (tokens.refresh_token) {
       const encryptedToken = encryptToken(tokens.refresh_token);
       
@@ -117,8 +111,6 @@ app.get('/auth/google/callback', async (req, res) => {
 
       if (error) {
         console.error("Supabase save error:", error);
-      } else {
-        console.log(`Encrypted refresh token successfully saved to Supabase for ${userEmail}!`);
       }
     }
 
@@ -147,7 +139,6 @@ app.post('/api/initiate-upload', async (req, res) => {
       return res.status(401).json({ error: "Connection expired, please tap 'Link YouTube Account' on your dashboard." });
     }
 
-    // Decrypt the token right before handing it to Google's client
     const plainRefreshToken = decryptToken(data.refresh_token);
     oauth2Client.setCredentials({ refresh_token: plainRefreshToken });
 
@@ -173,7 +164,7 @@ app.post('/api/initiate-upload', async (req, res) => {
       },
       media: {
         mimeType: actualFileType,
-        body: '' // Empty body to initialize session
+        body: ''
       }
     }, {
       url: 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
@@ -185,29 +176,41 @@ app.post('/api/initiate-upload', async (req, res) => {
     });
 
     const uploadUrl = response.headers.location;
-
-    // --- SERVER-SIDE FORMSPREE NOTIFICATION PING ---
-    try {
-      await fetch('https://formspree.io/f/mdeonlbw', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: '💡!SUP Upload Initialized!💡',
-          'Customer Email': userEmail,
-          'Video Title': title || 'Verification Upload',
-          'File Size': (fileSize / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
-        })
-      });
-      console.log(`Formspree alert notification sent for ${userEmail}`);
-    } catch (formspreeErr) {
-      console.log('Formspree notification failed silently:', formspreeErr);
-    }
-    // ----------------------------------------------
-
     res.json({ uploadUrl });
 
   } catch (err) {
     console.error("Error initiating upload session:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- UPLOAD COMPLETE NOTIFICATION ENDPOINT ---
+app.post('/api/upload-complete', async (req, res) => {
+  try {
+    const { userEmail, title } = req.body;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: "User email missing." });
+    }
+
+    const data = await resend.emails.send({
+      from: 'ComShell SUP <onboarding@resend.dev>',
+      to: [userEmail],
+      subject: '✅New Video Awaiting Review!✅',
+      html: `
+        <div style="font-family: sans-serif; color: #0f172a; padding: 20px;">
+          <h2 style="color: #2aa6ad;">Upload Successful!</h2>
+          <p>Hello,</p>
+          <p>The video <strong>"${title || 'Untitled Video'}"</strong> has just been successfully uploaded to YouTube through via ComShell's Safe Upload Pipeline. This video will remain PRIVATE and will not be accessible by the public until you change its visibility to PUBLIC or UNLISTED in the YouTube app.</p>
+          <p style="margin-top: 20px; color: #475569; font-size: 0.9rem;">Thank you for using ComShell!</p>
+        </div>
+      `
+    });
+
+    console.log("Success email sent:", data);
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("Error sending success email:", err);
     res.status(500).json({ error: err.message });
   }
 });
