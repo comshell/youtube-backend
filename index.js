@@ -201,7 +201,7 @@ app.post('/api/upload-complete', async (req, res) => {
         <div style="font-family: sans-serif; color: #0f172a; padding: 20px;">
           <h2 style="color: #2aa6ad;">Upload Successful!</h2>
           <p>Hello,</p>
-          <p>The video <strong>"${title || 'Untitled Video'}"</strong> has just been successfully uploaded to YouTube through via ComShell's Safe Upload Pipeline. This video will remain PRIVATE and will not be accessible by the public until you change its visibility to PUBLIC or UNLISTED in the YouTube app.</p>
+          <p>The video <strong>"${title || 'Untitled Video'}"</strong> has just been successfully uploaded to YouTube through ComShell's Safe Upload Pipeline. This video will remain PRIVATE and will not be accessible by the public until you change its visibility to PUBLIC or UNLISTED in the YouTube app.</p>
           <p style="margin-top: 20px; color: #475569; font-size: 0.9rem;">Thanks for using ComShell!</p>
         </div>
       `
